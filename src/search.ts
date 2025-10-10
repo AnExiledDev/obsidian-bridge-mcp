@@ -4,11 +4,27 @@ import type { PathFilter } from './pathfilter.js';
 import type { SearchParams, SearchResult } from './types.js';
 
 export class SearchService {
+  /**
+   * Creates a new SearchService for searching notes in the vault.
+   *
+   * @param vaultPath - Absolute path to the vault root directory
+   * @param pathFilter - PathFilter instance for controlling file access
+   */
   constructor(
     private vaultPath: string,
     private pathFilter: PathFilter
   ) {}
 
+  /**
+   * Searches for notes matching the query in the vault.
+   *
+   * Searches only allowed files and returns results with excerpts and match counts.
+   * Maximum limit is capped at 20 results.
+   *
+   * @param params - SearchParams containing query and search options
+   * @returns Array of SearchResult objects with paths, excerpts, and match info
+   * @throws Error if query is empty
+   */
   async search(params: SearchParams): Promise<SearchResult[]> {
     const {
       query,
@@ -25,7 +41,6 @@ export class SearchService {
     const results: SearchResult[] = [];
     const maxLimit = Math.min(limit, 20);
 
-    // Recursively find all .md files
     const markdownFiles = await this.findMarkdownFiles(this.vaultPath);
 
     for (const fullPath of markdownFiles) {
@@ -39,7 +54,6 @@ export class SearchService {
         const content = await readFile(fullPath, 'utf-8');
         let searchableText = '';
 
-        // Prepare search text based on options
         if (searchContent && searchFrontmatter) {
           searchableText = content;
         } else if (searchContent) {
@@ -57,16 +71,13 @@ export class SearchService {
 
         const index = searchIn.indexOf(searchQuery);
         if (index !== -1) {
-          // Extract excerpt around first match
           const excerptStart = Math.max(0, index - 50);
           const excerptEnd = Math.min(searchableText.length, index + searchQuery.length + 50);
           let excerpt = searchableText.slice(excerptStart, excerptEnd).trim();
 
-          // Add ellipsis if excerpt is truncated
           if (excerptStart > 0) excerpt = '...' + excerpt;
           if (excerptEnd < searchableText.length) excerpt = excerpt + '...';
 
-          // Count total matches
           let matchCount = 0;
           let searchIndex = 0;
           while ((searchIndex = searchIn.indexOf(searchQuery, searchIndex)) !== -1) {
@@ -74,11 +85,9 @@ export class SearchService {
             searchIndex += searchQuery.length;
           }
 
-          // Find line number of first match
           const lines = searchableText.slice(0, index).split('\n');
           const lineNumber = lines.length;
 
-          // Extract title from filename
           const title = relativePath.split('/').pop()?.replace(/\.md$/, '') || relativePath;
 
           results.push({
@@ -98,6 +107,12 @@ export class SearchService {
     return results;
   }
 
+  /**
+   * Recursively finds all .md files in a directory and its subdirectories.
+   *
+   * @param dirPath - Absolute path to directory to search
+   * @returns Array of absolute paths to markdown files
+   */
   private async findMarkdownFiles(dirPath: string): Promise<string[]> {
     const markdownFiles: string[] = [];
 
@@ -108,7 +123,6 @@ export class SearchService {
         const fullPath = join(dirPath, entry.name);
 
         if (entry.isDirectory()) {
-          // Recursively search subdirectories
           const subFiles = await this.findMarkdownFiles(fullPath);
           markdownFiles.push(...subFiles);
         } else if (entry.isFile() && entry.name.endsWith('.md')) {

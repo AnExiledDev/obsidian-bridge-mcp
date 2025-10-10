@@ -643,6 +643,10 @@ test("frontmatter validation with invalid data", async () => {
   })).rejects.toThrow(/Invalid frontmatter/);
 });
 
+// ============================================================================
+// EDIT_NOTE TESTS
+// ============================================================================
+
 test("edit_note with single edit", async () => {
   const testPath = "edit-test.md";
   const content = "# Test Note\n\nThis is old content.";
@@ -955,6 +959,10 @@ test("edit_note combined edits and deletions", async () => {
   expect(updatedNote.content).toBe("Keep this. REPLACED.");
 });
 
+// ============================================================================
+// EDIT_NOTE ANCHOR TESTS
+// ============================================================================
+
 test("edit_note with anchor-based edit (offset 0)", async () => {
   const testPath = "anchor-test.md";
   const content = "# Meeting Notes\n\n## Action Items\n- Old action item\n- Another item";
@@ -1246,6 +1254,10 @@ test("edit_note anchor combined with other edits", async () => {
   expect(updatedNote.content).toContain("Section B: new");
 });
 
+// ============================================================================
+// EDIT_NOTE REGEX TESTS
+// ============================================================================
+
 test("edit_note with basic regex without capture groups", async () => {
   const testPath = "regex-test.md";
   const content = "This has old and old words in it.";
@@ -1426,6 +1438,10 @@ test("edit_note with zero-width match prevention", async () => {
   expect(updatedNote.content).toBe("> Line 1\n> Line 2\n> Line 3");
 });
 
+// ============================================================================
+// EDIT_NOTE LINE-BASED TESTS
+// ============================================================================
+
 test("edit_note replace specific line number", async () => {
   const testPath = "line-test.md";
   const content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
@@ -1573,6 +1589,10 @@ test("edit_note line range deletion handles newlines correctly", async () => {
   expect(updatedNote.content).not.toContain("\n\n");
 });
 
+// ============================================================================
+// EDIT_NOTE FRONTMATTER EDITING TESTS
+// ============================================================================
+
 test("edit_note with editFrontmatter true edits frontmatter only preserves content", async () => {
   const testPath = "frontmatter-test.md";
   const noteContent = `---
@@ -1686,6 +1706,10 @@ test("edit_note with editFrontmatter true fails when frontmatter does not exist"
   expect(result.message).toContain("Solution:");
   expect(result.message).toContain("read_note");
 });
+
+// ============================================================================
+// EDIT_NOTE INDENTATION TESTS
+// ============================================================================
 
 test("edit_note preserveIndentation with 4-space indentation", async () => {
   const testPath = "indent-test.md";

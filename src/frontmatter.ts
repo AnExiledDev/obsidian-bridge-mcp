@@ -2,6 +2,12 @@ import matter from 'gray-matter';
 import type { ParsedNote, FrontmatterValidationResult } from './types.js';
 
 export class FrontmatterHandler {
+  /**
+   * Parses file content into frontmatter and content sections.
+   *
+   * @param content - Complete file content potentially including frontmatter
+   * @returns ParsedNote with separated frontmatter, content, and original content
+   */
   parse(content: string): ParsedNote {
     try {
       const parsed = matter(content);
@@ -20,6 +26,14 @@ export class FrontmatterHandler {
     }
   }
 
+  /**
+   * Combines frontmatter and content into a complete note string.
+   *
+   * @param frontmatterData - Frontmatter object to serialize as YAML
+   * @param content - Note content (without frontmatter)
+   * @returns Complete note string with YAML frontmatter delimiters
+   * @throws Error if frontmatter cannot be serialized
+   */
   stringify(frontmatterData: Record<string, any>, content: string): string {
     try {
       // If no frontmatter, return content as-is
@@ -33,6 +47,14 @@ export class FrontmatterHandler {
     }
   }
 
+  /**
+   * Validates frontmatter to ensure it can be serialized as valid YAML.
+   *
+   * Checks for functions, symbols, invalid dates, and non-string keys.
+   *
+   * @param frontmatterData - Frontmatter object to validate
+   * @returns FrontmatterValidationResult with validity status, errors, and warnings
+   */
   validate(frontmatterData: Record<string, any>): FrontmatterValidationResult {
     const result: FrontmatterValidationResult = {
       isValid: true,
@@ -41,19 +63,26 @@ export class FrontmatterHandler {
     };
 
     try {
-      // Test if the frontmatter can be serialized to valid YAML using gray-matter
       matter.stringify('', frontmatterData);
     } catch (error) {
       result.isValid = false;
       result.errors.push(`Invalid YAML structure: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // Check for problematic values
     this.checkForProblematicValues(frontmatterData, result, '');
 
     return result;
   }
 
+  /**
+   * Recursively checks for problematic values in frontmatter object.
+   *
+   * Detects functions, symbols, invalid dates, non-string keys, and nested issues.
+   *
+   * @param obj - Object/value to check
+   * @param result - Validation result object to populate with errors/warnings
+   * @param path - Current property path for error reporting
+   */
   private checkForProblematicValues(
     obj: any,
     result: FrontmatterValidationResult,
@@ -94,7 +123,6 @@ export class FrontmatterHandler {
       for (const [key, value] of Object.entries(obj)) {
         const currentPath = path ? `${path}.${key}` : key;
 
-        // Check for problematic keys
         if (typeof key !== 'string') {
           result.errors.push(`Non-string keys are not allowed: ${key}`);
           result.isValid = false;
@@ -105,11 +133,25 @@ export class FrontmatterHandler {
     }
   }
 
+  /**
+   * Extracts only the frontmatter from content without parsing content.
+   *
+   * @param content - Complete file content potentially including frontmatter
+   * @returns Frontmatter object (empty object if no frontmatter)
+   */
   extractFrontmatter(content: string): Record<string, any> {
     const parsed = this.parse(content);
     return parsed.frontmatter;
   }
 
+  /**
+   * Updates frontmatter in content by merging with provided updates.
+   *
+   * @param content - Complete file content potentially including frontmatter
+   * @param updates - Frontmatter properties to merge with existing frontmatter
+   * @returns Complete note string with updated frontmatter
+   * @throws Error if resulting frontmatter is invalid
+   */
   updateFrontmatter(content: string, updates: Record<string, any>): string {
     const parsed = this.parse(content);
     const updatedFrontmatter = { ...parsed.frontmatter, ...updates };
