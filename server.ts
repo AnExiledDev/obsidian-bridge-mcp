@@ -17,7 +17,6 @@ if (!vaultPath) {
   process.exit(1);
 }
 
-// Initialize services
 const pathFilter = new PathFilter();
 const frontmatterHandler = new FrontmatterHandler();
 const fileSystem = new FileSystemService(vaultPath, pathFilter, frontmatterHandler);
@@ -78,8 +77,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         }
       },
       {
-        name: "patch_note",
-        description: "Efficiently update part of a note by replacing a specific string. This is more efficient than rewriting the entire note for small changes.",
+        name: "edit_note",
+        description: "Edit a note with multiple parallel edits and/or deletions. Supports string matching with occurrence control. All operations are atomic - either all succeed or none are applied.",
         inputSchema: {
           type: "object",
           properties: {
@@ -87,21 +86,118 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: "string",
               description: "Path to the note relative to vault root"
             },
-            oldString: {
-              type: "string",
-              description: "The exact string to replace. Must match exactly including whitespace and line breaks."
+            edits: {
+              type: "array",
+              description: "Array of edit operations (max 10)",
+              maxItems: 10,
+              items: {
+                type: "object",
+                oneOf: [
+                  {
+                    properties: {
+                      match: {
+                        type: "string",
+                        description: "Exact text to find and replace"
+                      },
+                      replace: {
+                        type: "string",
+                        description: "Replacement text (cannot be empty - use deletions for removing text)"
+                      },
+                      occurrence: {
+                        description: "Which occurrence to replace: 'first', 'last', 'all', or a number (1-indexed). If omitted and multiple matches exist, operation will fail for safety.",
+                        oneOf: [
+                          { type: "string", enum: ["first", "last", "all"] },
+                          { type: "number", minimum: 1 }
+                        ]
+                      }
+                    },
+                    required: ["match", "replace"]
+                  },
+                  {
+                    properties: {
+                      line: {
+                        type: "number",
+                        description: "1-indexed line number to replace",
+                        minimum: 1
+                      },
+                      replace: {
+                        type: "string",
+                        description: "Replacement text for the entire line"
+                      }
+                    },
+                    required: ["line", "replace"]
+                  }
+                ]
+              }
             },
-            newString: {
-              type: "string",
-              description: "The new string to insert in place of oldString"
+            deletions: {
+              type: "array",
+              description: "Array of deletion operations (max 10)",
+              maxItems: 10,
+              items: {
+                type: "object",
+                oneOf: [
+                  {
+                    properties: {
+                      match: {
+                        type: "string",
+                        description: "Exact text to delete"
+                      },
+                      occurrence: {
+                        description: "Which occurrence to delete: 'first', 'last', 'all', or a number (1-indexed). If omitted and multiple matches exist, operation will fail for safety.",
+                        oneOf: [
+                          { type: "string", enum: ["first", "last", "all"] },
+                          { type: "number", minimum: 1 }
+                        ]
+                      }
+                    },
+                    required: ["match"]
+                  },
+                  {
+                    properties: {
+                      line: {
+                        type: "number",
+                        description: "1-indexed line number to delete",
+                        minimum: 1
+                      }
+                    },
+                    required: ["line"]
+                  },
+                  {
+                    properties: {
+                      startLine: {
+                        type: "number",
+                        description: "Start of line range to delete (1-indexed, inclusive)",
+                        minimum: 1
+                      },
+                      endLine: {
+                        type: "number",
+                        description: "End of line range to delete (1-indexed, inclusive)",
+                        minimum: 1
+                      }
+                    },
+                    required: ["startLine", "endLine"]
+                  }
+                ]
+              }
             },
-            replaceAll: {
-              type: "boolean",
-              description: "If true, replace all occurrences. If false (default), the operation will fail if multiple matches are found to prevent unintended replacements.",
-              default: false
+            options: {
+              type: "object",
+              properties: {
+                preserveIndentation: {
+                  type: "boolean",
+                  description: "Auto-match indentation from the matched text and apply to replacement (default: false)",
+                  default: false
+                },
+                editFrontmatter: {
+                  type: "boolean",
+                  description: "Edit frontmatter YAML instead of content. When true, edits apply to frontmatter; when false (default), edits apply to content only.",
+                  default: false
+                }
+              }
             }
           },
-          required: ["path", "oldString", "newString"]
+          required: ["path"]
         }
       },
       {
@@ -299,11 +395,18 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   };
 });
 
-// Helper function to trim path arguments
+/**
+ * Trims whitespace from path-related arguments.
+ *
+ * Processes single path properties (path, oldPath, newPath, confirmPath)
+ * and path arrays (paths) to remove leading/trailing whitespace.
+ *
+ * @param args - Arguments object potentially containing path strings/arrays
+ * @returns New object with trimmed path values
+ */
 function trimPaths(args: any): any {
   const trimmed = { ...args };
 
-  // Trim single path properties
   if (trimmed.path && typeof trimmed.path === 'string') {
     trimmed.path = trimmed.path.trim();
   }
@@ -317,7 +420,6 @@ function trimPaths(args: any): any {
     trimmed.confirmPath = trimmed.confirmPath.trim();
   }
 
-  // Trim path arrays
   if (trimmed.paths && Array.isArray(trimmed.paths)) {
     trimmed.paths = trimmed.paths.map((p: any) =>
       typeof p === 'string' ? p.trim() : p
@@ -366,18 +468,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case "patch_note": {
-        const result = await fileSystem.patchNote({
+      case "edit_note": {
+        const result = await fileSystem.editNote({
           path: trimmedArgs.path,
-          oldString: trimmedArgs.oldString,
-          newString: trimmedArgs.newString,
-          replaceAll: trimmedArgs.replaceAll
+          edits: trimmedArgs.edits,
+          deletions: trimmedArgs.deletions,
+          options: trimmedArgs.options
         });
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2)
+              text: result.message
             }
           ],
           isError: !result.success
@@ -409,7 +511,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2)
+              text: result.message
             }
           ],
           isError: !result.success
@@ -448,7 +550,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2)
+              text: result.message
             }
           ],
           isError: !result.success
@@ -534,7 +636,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             {
               type: "text",
-              text: JSON.stringify(result, null, 2)
+              text: result.message
             }
           ],
           isError: !result.success
